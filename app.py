@@ -218,7 +218,7 @@ with col_right:
     if "recorded_bytes" not in st.session_state:
         st.session_state.recorded_bytes = None
 
-    # 자바스크립트 기반 녹음 인터페이스 (기존 마이크 아이콘 대체)
+    # 자바스크립트 기반 녹음 인터페이스
     recorder_html = """
     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
         <button id="startBtn" style="padding: 10px 20px; background-color: #10B981; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">🎙️ 녹음 시작</button>
@@ -248,7 +248,6 @@ with col_right:
                 reader.readAsDataURL(audioBlob);
                 reader.onloadend = () => {
                     const base64Audio = reader.result.split(',')[1];
-                    // 스트림릿 서버로 데이터 전송
                     window.parent.postMessage({
                         type: 'streamlit:setComponentValue',
                         value: base64Audio
@@ -275,9 +274,9 @@ with col_right:
     # HTML 컴포넌트를 화면에 렌더링하고 결과 데이터 받기
     components_output = components.html(recorder_html, height=60)
 
-    # 녹음 데이터 처리 (Base64 -> Bytes)
+    # 녹음 데이터 처리 (안전장치 추가 버전)
     import base64
-    if components_output:
+    if components_output and isinstance(components_output, str):
         st.session_state.recorded_bytes = base64.b64decode(components_output)
 
     student_audio_bytes = st.session_state.recorded_bytes
@@ -293,7 +292,6 @@ with col_right:
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
         except:
-            # 예외 처리 안전장치
             pass
     else:
         uploaded_s = st.file_uploader("학생 파일 업로드(선택)", type=["wav", "mp3"], key="student_upload")
