@@ -134,7 +134,6 @@ col_left, col_right = st.columns(2)
 with col_left:
     st.subheader("👨‍🏫 Native Reference")
     
-    # 실행 중인 파일 기준 절대 경로 자동 계산
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     audio_dir = os.path.join(BASE_DIR, "level", "level1", "audio")
     
@@ -143,41 +142,83 @@ with col_left:
     
     teacher_audio = None
     teacher_fs = 16000
-    
-    # 1. 깃허브 저장소에 MP3 파일이 있는 경우
+    raw_audio_source = None
+
+    # 1. 파일 경로 확인 및 데이터 소스 지정
     if os.path.exists(audio_path):
         st.audio(audio_path)
-        data, teacher_fs = sf.read(audio_path)
-        if len(data.shape) > 1: data = data[:, 0]
-        teacher_audio = data.flatten()
-        
-    # 2. 깃허브 저장소에 WAV 파일이 있는 경우
+        raw_audio_source = audio_path
     elif os.path.exists(audio_path_wav):
         st.audio(audio_path_wav)
-        data, teacher_fs = sf.read(audio_path_wav)
-        if len(data.shape) > 1: data = data[:, 0]
-        teacher_audio = data.flatten()
-        
-    # 3. 서버에 파일이 없어서 직접 파일을 업로드하는 경우
+        raw_audio_source = audio_path_wav
     else:
         st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
         uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
         if uploaded_t:
-            # [수정] 직접 업로드한 파일도 사이트에서 소리를 들을 수 있도록 플레이어 추가
             st.audio(uploaded_t)
-            
-            # 음원 분석을 위해 데이터 읽기 (파일 포인터 리셋 포함)
-            uploaded_t.seek(0)
-            data, teacher_fs = sf.read(uploaded_t)
+            raw_audio_source = uploaded_t
+
+    # 2. 오디오 파일 읽기 및 그래프 디코딩 안전장치
+    if raw_audio_source is not None:
+        try:
+            if hasattr(raw_audio_source, 'seek'):
+                raw_audio_source.seek(0)
+            data, teacher_fs = sf.read(raw_audio_source)
             if len(data.shape) > 1: data = data[:, 0]
             teacher_audio = data.flatten()
+        except Exception as e:
+            # soundfile로 읽기 실패 시, 스트림릿 내장 바이트 변환 시도
+            try:
+                if hasattr(raw_audio_source, 'read'):
+                    raw_audio_source.seek(0)
+                    bytes_data = raw_audio_source.read()
+                else:
+                    with open(raw_audio_source, 'rb') as f:
+                        bytes_data = f.read()
+                # 8비트/16비트 오디오 데이터를 넘파이 배열로 강제 역직렬화
+                audio_np = np.frombuffer(bytes_data, dtype=np.int16) / 32768.0
+                # 앞쪽 헤더 영역 제외하고 오디오 알맹이만 추출
+                if len(audio_np) > 44:
+                    teacher_audio = audio_np[44:].flatten()
+                    teacher_fs = 16000
+            except:
+                st.error("오디오 파일 코덱 분석에 실패했습니다. 다른 포맷이나 기기로 녹음된 파일 사용을 권장합니다.")
+
+    # 선생님 그래프 그리기
+    fig_t, ax_t = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
+    ax_t.set_facecolor('#111827')
+    
+    if teacher_audio is not None and len(teacher_audio) > 0:
+        t_times, t_pitches, t_ints = analyze_audio(teacher_audio, teacher_fs)
+        ax_t.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2, label="Pitch")
+        ax_t.set_ylabel("Pitch (Hz)", color='#0EA5E9')
+        ax_t.set_ylim(80, 350)
+        ax_t.tick_params(colors='#9CA3AF')
+        
+        ax_t_int = ax_t.twinx()
+        ax_t_int.plot(t_times, t_ints, color='purple', linestyle='--', alpha=0.4)
+        ax_t_int.set_ylabel("Intensity (dB)", color='purple')
+        ax_t_int.set_ylim(0, 90)
+        ax_t_int.tick_params(colors='#9CA3AF')
+    else:
+        ax_t.text(0.5, 0.5, "Awaiting Audio Data", color='#9CA3AF', ha='center', va='center')
+        ax_t.set_axis_off()
+        
+    st.pyplot(fig_t)
 
 # --- 🎧 오른쪽: User Audio (학생) ---
 with col_right:
     st.subheader("🎧 User Audio")
     
-    st.write("클릭하여 녹음 시작/종료:")
-    student_audio_bytes = audio_recorder(text="", recording_color="#EF4444", neutral_color="#9CA3AF")
+    st.write("🎙️ 마이크를 누르면 녹음이 시작됩니다. (말을 멈추어도 자동으로 꺼지지 않으니 천천히 발음한 후 한 번 더 눌러 종료하세요!)")
+    
+    # [수정] 무음 감지 종료 시간을 30초로 대폭 늘려 자동 종료를 막고, 수동 조작처럼 동작하게 설정
+    student_audio_bytes = audio_recorder(
+        text="녹음 시작/중지 클릭",
+        recording_color="#EF4444",
+        neutral_color="#9CA3AF",
+        pause_threshold=30.0  # 30초 동안 침묵해야 꺼지므로 사실상 수동 제어 가능
+    )
     
     student_audio = None
     student_fs = 16000
@@ -225,15 +266,15 @@ fig_b, plt_ax_b = plt.subplots(figsize=(11, 2.5), facecolor='#1F2937')
 plt_ax_b.set_facecolor('#111827')
 plt_ax_b.tick_params(colors='#9CA3AF')
 
-if teacher_audio is not None:
+if teacher_audio is not None and len(teacher_audio) > 0:
     t_times, t_pitches, _ = analyze_audio(teacher_audio, teacher_fs)
     plt_ax_b.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2.5, label="Reference (Teacher)", alpha=0.6)
 
-if student_audio is not None:
+if student_audio is not None and len(student_audio) > 0:
     s_times, s_pitches, _ = analyze_audio(student_audio, student_fs)
     plt_ax_b.plot(s_times, s_pitches, color='#EF4444', linewidth=2.5, label="User (Student)", alpha=0.9)
 
-if teacher_audio is not None or student_audio is not None:
+if (teacher_audio is not None and len(teacher_audio) > 0) or (student_audio is not None and len(student_audio) > 0):
     plt_ax_b.set_ylim(80, 350)
     plt_ax_b.legend(loc="upper right", facecolor='#1F2937', edgecolor='#9CA3AF', labelcolor='#F3F4F6')
 else:
