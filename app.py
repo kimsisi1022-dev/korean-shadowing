@@ -134,50 +134,43 @@ col_left, col_right = st.columns(2)
 with col_left:
     st.subheader("👨‍🏫 Native Reference")
     
-    audio_path = f"level/level1/audio/{idx}.mp3"
+    # 실행 중인 파일 기준 절대 경로 자동 계산
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    audio_dir = os.path.join(BASE_DIR, "level", "level1", "audio")
+    
+    audio_path = os.path.join(audio_dir, f"{idx}.mp3")
+    audio_path_wav = os.path.join(audio_dir, f"{idx}.wav")
+    
     teacher_audio = None
     teacher_fs = 16000
     
+    # 1. 깃허브 저장소에 MP3 파일이 있는 경우
     if os.path.exists(audio_path):
         st.audio(audio_path)
         data, teacher_fs = sf.read(audio_path)
         if len(data.shape) > 1: data = data[:, 0]
         teacher_audio = data.flatten()
+        
+    # 2. 깃허브 저장소에 WAV 파일이 있는 경우
+    elif os.path.exists(audio_path_wav):
+        st.audio(audio_path_wav)
+        data, teacher_fs = sf.read(audio_path_wav)
+        if len(data.shape) > 1: data = data[:, 0]
+        teacher_audio = data.flatten()
+        
+    # 3. 서버에 파일이 없어서 직접 파일을 업로드하는 경우
     else:
-        audio_path_wav = f"level/level1/audio/{idx}.wav"
-        if os.path.exists(audio_path_wav):
-            st.audio(audio_path_wav)
-            data, teacher_fs = sf.read(audio_path_wav)
+        st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
+        uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
+        if uploaded_t:
+            # [수정] 직접 업로드한 파일도 사이트에서 소리를 들을 수 있도록 플레이어 추가
+            st.audio(uploaded_t)
+            
+            # 음원 분석을 위해 데이터 읽기 (파일 포인터 리셋 포함)
+            uploaded_t.seek(0)
+            data, teacher_fs = sf.read(uploaded_t)
             if len(data.shape) > 1: data = data[:, 0]
             teacher_audio = data.flatten()
-        else:
-            st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
-            uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
-            if uploaded_t:
-                data, teacher_fs = sf.read(uploaded_t)
-                if len(data.shape) > 1: data = data[:, 0]
-                teacher_audio = data.flatten()
-
-    fig_t, ax_t = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
-    ax_t.set_facecolor('#111827')
-    
-    if teacher_audio is not None:
-        t_times, t_pitches, t_ints = analyze_audio(teacher_audio, teacher_fs)
-        ax_t.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2, label="Pitch")
-        ax_t.set_ylabel("Pitch (Hz)", color='#0EA5E9')
-        ax_t.set_ylim(80, 350)
-        ax_t.tick_params(colors='#9CA3AF')
-        
-        ax_t_int = ax_t.twinx()
-        ax_t_int.plot(t_times, t_ints, color='purple', linestyle='--', alpha=0.4)
-        ax_t_int.set_ylabel("Intensity (dB)", color='purple')
-        ax_t_int.set_ylim(0, 90)
-        ax_t_int.tick_params(colors='#9CA3AF')
-    else:
-        ax_t.text(0.5, 0.5, "Awaiting Audio Data", color='#9CA3AF', ha='center', va='center')
-        ax_t.set_axis_off()
-        
-    st.pyplot(fig_t)
 
 # --- 🎧 오른쪽: User Audio (학생) ---
 with col_right:
