@@ -5,14 +5,14 @@ import os
 import soundfile as sf
 from audio_recorder_streamlit import audio_recorder
 
-# --- 페이지 기본 설정 (다크 모드풍 테마 및 타이틀) ---
+# --- Page Configuration (Dark theme & Title) ---
 st.set_page_config(
     page_title="Korean Pronunciation Shadowing",
     page_icon="🗣️",
     layout="wide"
 )
 
-# --- 스타일링 (CSS) ---
+# --- Custom Styling (CSS) ---
 st.markdown("""
     <style>
     .main { background-color: #111827; color: #F3F4F6; }
@@ -32,7 +32,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 문장 데이터 연동 ---
+# --- Sentence Data Fallback ---
 try:
     from sentences import sentence_level1
 except ImportError:
@@ -42,7 +42,7 @@ except ImportError:
         "한국어 발음 연습을 시작해 봅시다."
     ]
 
-# --- 오디오 분석 함수 (Pitch & Intensity) ---
+# --- Audio Analysis Function (Pitch & Intensity) ---
 def analyze_audio(audio_data, fs):
     frame_size = int(fs * 0.03)  
     hop_size = int(fs * 0.01)    
@@ -69,44 +69,44 @@ def analyze_audio(audio_data, fs):
         times.append(idx / fs)
     return np.array(times), np.array(pitches), np.array(intensities)
 
-# --- 상태 관리 (현재 문장 번호) ---
+# --- Session State Management (Current Sentence Index) ---
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-# --- 📁 [새 기능] 왼쪽 사이드바 대사 목록화 영역 ---
+# --- 📁 Sidebar: Script List View ---
 with st.sidebar:
-    st.title("📋 대사 목록 전체보기")
-    st.caption("연습하고 싶은 문장을 아래 목록에서 바로 선택할 수 있습니다.")
+    st.title("📋 Script List")
+    st.caption("Select a sentence from the list below to jump directly to it.")
     
-    # 1. 드롭다운 선택 상자로 목록화
+    # 1. Dropdown Selector
     selected_idx = st.selectbox(
-        "🎯 이동할 문장 선택",
+        "🎯 Select Sentence",
         options=range(len(sentence_level1)),
         index=st.session_state.current_idx,
         format_func=lambda x: f"Q{x+1}. {sentence_level1[x][:20]}..." if len(sentence_level1[x]) > 20 else f"Q{x+1}. {sentence_level1[x]}"
     )
     
-    # 사이드바에서 문장을 고르면 현재 화면도 해당 문장으로 즉시 동기화
+    # Sync main screen if a different sentence is selected from sidebar
     if selected_idx != st.session_state.current_idx:
         st.session_state.current_idx = selected_idx
         st.rerun()
         
     st.markdown("---")
     
-    # 2. 텍스트 리스트로 전체 대사 한눈에 훑어보기 안내
-    st.markdown("**전체 대사 요약 리스트**")
+    # 2. Overview Text List
+    st.markdown("**All Sentences Overview**")
     for i, sentence in enumerate(sentence_level1):
-        # 현재 선택된 대사에는 별(⭐) 표시로 강조
+        # Highlight current sentence with a star (⭐)
         if i == st.session_state.current_idx:
             st.markdown(f"**⭐ Q{i+1}. {sentence}**")
         else:
             st.markdown(f"Q{i+1}. {sentence}")
 
-# --- 메인 화면 상단 헤더 ---
+# --- Main Header ---
 st.title("Korean Pronunciation Shadowing Analyzer 🗣️")
 st.caption("Compare the waveform and pitch between the Native Reference and your own voice side-by-side. You can record live or upload audio files to practice.")
 
-# --- 메인 화면 문장 내비게이션 및 표시 ---
+# --- Sentence Navigation & Display ---
 col_nav1, col_nav2, _ = st.columns([1, 1, 8])
 with col_nav1:
     if st.button("◀ Previous", use_container_width=True):
@@ -127,10 +127,10 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# --- 메인 분석 패널 (좌우 분할) ---
+# --- Main Dashboard Split ---
 col_left, col_right = st.columns(2)
 
-# --- 👨‍🏫 왼쪽: Native Reference (선생님) ---
+# --- 👨‍🏫 Left Column: Native Reference ---
 with col_left:
     st.subheader("👨‍🏫 Native Reference")
     
@@ -144,7 +144,7 @@ with col_left:
     teacher_fs = 16000
     raw_audio_source = None
 
-    # 1. 파일 경로 확인 및 데이터 소스 지정
+    # Check file availability
     if os.path.exists(audio_path):
         st.audio(audio_path)
         raw_audio_source = audio_path
@@ -152,13 +152,13 @@ with col_left:
         st.audio(audio_path_wav)
         raw_audio_source = audio_path_wav
     else:
-        st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
-        uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
+        st.info("No default reference file found. Please upload an audio file.")
+        uploaded_t = st.file_uploader("Upload Teacher Audio", type=["wav", "mp3"], key="teacher_upload")
         if uploaded_t:
             st.audio(uploaded_t)
             raw_audio_source = uploaded_t
 
-    # 2. 오디오 파일 읽기 및 그래프 디코딩 안전장치
+    # Audio Decoding Safeguard
     if raw_audio_source is not None:
         try:
             if hasattr(raw_audio_source, 'seek'):
@@ -167,7 +167,6 @@ with col_left:
             if len(data.shape) > 1: data = data[:, 0]
             teacher_audio = data.flatten()
         except Exception as e:
-            # soundfile로 읽기 실패 시, 스트림릿 내장 바이트 변환 시도
             try:
                 if hasattr(raw_audio_source, 'read'):
                     raw_audio_source.seek(0)
@@ -175,16 +174,14 @@ with col_left:
                 else:
                     with open(raw_audio_source, 'rb') as f:
                         bytes_data = f.read()
-                # 8비트/16비트 오디오 데이터를 넘파이 배열로 강제 역직렬화
                 audio_np = np.frombuffer(bytes_data, dtype=np.int16) / 32768.0
-                # 앞쪽 헤더 영역 제외하고 오디오 알맹이만 추출
                 if len(audio_np) > 44:
                     teacher_audio = audio_np[44:].flatten()
                     teacher_fs = 16000
             except:
-                st.error("오디오 파일 코덱 분석에 실패했습니다. 다른 포맷이나 기기로 녹음된 파일 사용을 권장합니다.")
+                st.error("Failed to decode audio codec. Please try a different audio format.")
 
-    # 선생님 그래프 그리기
+    # Render Teacher Plot
     fig_t, ax_t = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
     ax_t.set_facecolor('#111827')
     
@@ -207,18 +204,18 @@ with col_left:
     st.pyplot(fig_t)
 
 
-# --- 🎧 오른쪽: User Audio (학생) ---
+# --- 🎧 Right Column: User Audio (Student) ---
 with col_right:
     st.subheader("🎧 User Audio")
     
-    st.write("🎙️ 마이크를 누르면 녹음이 시작됩니다. (말을 멈추어도 자동으로 꺼지지 않으니 천천히 발음한 후 한 번 더 눌러 종료하세요!)")
+    st.write("🎙️ Click the microphone icon to start recording. Speak clearly, and click it again to stop when you are done!")
     
-    # [수정] 무음 감지 종료 시간을 30초로 대폭 늘려 자동 종료를 막고, 수동 조작처럼 동작하게 설정
+    # Custom audio recorder configuration
     student_audio_bytes = audio_recorder(
-        text="녹음 시작/중지 클릭",
+        text="Click to Record/Stop",
         recording_color="#EF4444",
         neutral_color="#9CA3AF",
-        pause_threshold=30.0  # 30초 동안 침묵해야 꺼지므로 사실상 수동 제어 가능
+        pause_threshold=30.0  # Safe threshold to avoid unwanted automatic stops
     )
     
     student_audio = None
@@ -232,12 +229,13 @@ with col_right:
         if len(data.shape) > 1: data = data[:, 0]
         student_audio = data.flatten()
     else:
-        uploaded_s = st.file_uploader("학생 파일 업로드(선택)", type=["wav", "mp3"], key="student_upload")
+        uploaded_s = st.file_uploader("Upload Your Audio (Optional)", type=["wav", "mp3"], key="student_upload")
         if uploaded_s:
             data, student_fs = sf.read(uploaded_s)
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
 
+    # Render Student Plot
     fig_s, ax_s = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
     ax_s.set_facecolor('#111827')
     
@@ -259,9 +257,9 @@ with col_right:
         
     st.pyplot(fig_s)
 
-# --- 📊 하단: 통합 비교 그래프 ---
+# --- 📊 Bottom Column: Integrated Comparison Graph ---
 st.markdown("---")
-st.subheader("📊 Integrated Comparison (억양 겹쳐보기)")
+st.subheader("📊 Integrated Comparison (Intonation Overlay)")
 
 fig_b, plt_ax_b = plt.subplots(figsize=(11, 2.5), facecolor='#1F2937')
 plt_ax_b.set_facecolor('#111827')
