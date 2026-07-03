@@ -32,7 +32,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 더미 문장 데이터 (기존 데이터 연동용) ---
+# --- 문장 데이터 연동 ---
 try:
     from sentences import sentence_level1
 except ImportError:
@@ -73,11 +73,40 @@ def analyze_audio(audio_data, fs):
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-# --- 상단 헤더 ---
+# --- 📁 [새 기능] 왼쪽 사이드바 대사 목록화 영역 ---
+with st.sidebar:
+    st.title("📋 대사 목록 전체보기")
+    st.caption("연습하고 싶은 문장을 아래 목록에서 바로 선택할 수 있습니다.")
+    
+    # 1. 드롭다운 선택 상자로 목록화
+    selected_idx = st.selectbox(
+        "🎯 이동할 문장 선택",
+        options=range(len(sentence_level1)),
+        index=st.session_state.current_idx,
+        format_func=lambda x: f"Q{x+1}. {sentence_level1[x][:20]}..." if len(sentence_level1[x]) > 20 else f"Q{x+1}. {sentence_level1[x]}"
+    )
+    
+    # 사이드바에서 문장을 고르면 현재 화면도 해당 문장으로 즉시 동기화
+    if selected_idx != st.session_state.current_idx:
+        st.session_state.current_idx = selected_idx
+        st.rerun()
+        
+    st.markdown("---")
+    
+    # 2. 텍스트 리스트로 전체 대사 한눈에 훑어보기 안내
+    st.markdown("**전체 대사 요약 리스트**")
+    for i, sentence in enumerate(sentence_level1):
+        # 현재 선택된 대사에는 별(⭐) 표시로 강조
+        if i == st.session_state.current_idx:
+            st.markdown(f"**⭐ Q{i+1}. {sentence}**")
+        else:
+            st.markdown(f"Q{i+1}. {sentence}")
+
+# --- 메인 화면 상단 헤더 ---
 st.title("Korean Pronunciation Shadowing Analyzer 🗣️")
 st.caption("Compare the waveform and pitch between the Native Reference and your own voice side-by-side. You can record live or upload audio files to practice.")
 
-# --- 문장 내비게이션 및 표시 ---
+# --- 메인 화면 문장 내비게이션 및 표시 ---
 col_nav1, col_nav2, _ = st.columns([1, 1, 8])
 with col_nav1:
     if st.button("◀ Previous", use_container_width=True):
@@ -101,11 +130,10 @@ st.markdown(f"""
 # --- 메인 분석 패널 (좌우 분할) ---
 col_left, col_right = st.columns(2)
 
-# --- 왼쪽: Native Reference (선생님) ---
+# --- 👨‍🏫 왼쪽: Native Reference (선생님) ---
 with col_left:
     st.subheader("👨‍🏫 Native Reference")
     
-    # 기본 음원 로드 시도
     audio_path = f"level/level1/audio/{idx}.mp3"
     teacher_audio = None
     teacher_fs = 16000
@@ -116,14 +144,20 @@ with col_left:
         if len(data.shape) > 1: data = data[:, 0]
         teacher_audio = data.flatten()
     else:
-        st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
-        uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
-        if uploaded_t:
-            data, teacher_fs = sf.read(uploaded_t)
+        audio_path_wav = f"level/level1/audio/{idx}.wav"
+        if os.path.exists(audio_path_wav):
+            st.audio(audio_path_wav)
+            data, teacher_fs = sf.read(audio_path_wav)
             if len(data.shape) > 1: data = data[:, 0]
             teacher_audio = data.flatten()
+        else:
+            st.info("기본 제공 음원 파일이 없습니다. 파일을 업로드해 주세요.")
+            uploaded_t = st.file_uploader("선생님 파일 업로드", type=["wav", "mp3"], key="teacher_upload")
+            if uploaded_t:
+                data, teacher_fs = sf.read(uploaded_t)
+                if len(data.shape) > 1: data = data[:, 0]
+                teacher_audio = data.flatten()
 
-    # 선생님 그래프 그리기
     fig_t, ax_t = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
     ax_t.set_facecolor('#111827')
     
@@ -145,11 +179,10 @@ with col_left:
         
     st.pyplot(fig_t)
 
-# --- 오른쪽: User Audio (학생) ---
+# --- 🎧 오른쪽: User Audio (학생) ---
 with col_right:
     st.subheader("🎧 User Audio")
     
-    # 웹용 간편 녹음 부품 (마이크 아이콘 클릭 시 녹음 시작/중지)
     st.write("클릭하여 녹음 시작/종료:")
     student_audio_bytes = audio_recorder(text="", recording_color="#EF4444", neutral_color="#9CA3AF")
     
@@ -158,7 +191,6 @@ with col_right:
     
     if student_audio_bytes:
         st.audio(student_audio_bytes, format="audio/wav")
-        # 임시 파일로 저장 후 읽기
         with open("temp_student.wav", "wb") as f:
             f.write(student_audio_bytes)
         data, student_fs = sf.read("temp_student.wav")
@@ -171,7 +203,6 @@ with col_right:
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
 
-    # 학생 그래프 그리기
     fig_s, ax_s = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
     ax_s.set_facecolor('#111827')
     
@@ -193,26 +224,26 @@ with col_right:
         
     st.pyplot(fig_s)
 
-# --- 하단: 통합 비교 그래프 ---
+# --- 📊 하단: 통합 비교 그래프 ---
 st.markdown("---")
 st.subheader("📊 Integrated Comparison (억양 겹쳐보기)")
 
-fig_b, ax_b = plt.subplots(figsize=(11, 2.5), facecolor='#1F2937')
-ax_b.set_facecolor('#111827')
-ax_b.tick_params(colors='#9CA3AF')
+fig_b, plt_ax_b = plt.subplots(figsize=(11, 2.5), facecolor='#1F2937')
+plt_ax_b.set_facecolor('#111827')
+plt_ax_b.tick_params(colors='#9CA3AF')
 
 if teacher_audio is not None:
     t_times, t_pitches, _ = analyze_audio(teacher_audio, teacher_fs)
-    ax_b.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2.5, label="Reference (Teacher)", alpha=0.6)
+    plt_ax_b.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2.5, label="Reference (Teacher)", alpha=0.6)
 
 if student_audio is not None:
     s_times, s_pitches, _ = analyze_audio(student_audio, student_fs)
-    ax_b.plot(s_times, s_pitches, color='#EF4444', linewidth=2.5, label="User (Student)", alpha=0.9)
+    plt_ax_b.plot(s_times, s_pitches, color='#EF4444', linewidth=2.5, label="User (Student)", alpha=0.9)
 
 if teacher_audio is not None or student_audio is not None:
-    ax_b.set_ylim(80, 350)
-    ax_b.legend(loc="upper right", facecolor='#1F2937', edgecolor='#9CA3AF', labelcolor='#F3F4F6')
+    plt_ax_b.set_ylim(80, 350)
+    plt_ax_b.legend(loc="upper right", facecolor='#1F2937', edgecolor='#9CA3AF', labelcolor='#F3F4F6')
 else:
-    ax_b.text(0.5, 0.5, "Awaiting Input Data to Compare", color='#9CA3AF', ha='center', va='center')
+    plt_ax_b.text(0.5, 0.5, "Awaiting Input Data to Compare", color='#9CA3AF', ha='center', va='center')
 
 st.pyplot(fig_b)
