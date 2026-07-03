@@ -205,7 +205,6 @@ with col_left:
         ax_t.set_axis_off()
         
     st.pyplot(fig_t)
-
 # --- 🎧 오른쪽: User Audio (학생) ---
 with col_right:
     st.subheader("🎧 User Audio")
@@ -218,7 +217,7 @@ with col_right:
     if "recorded_bytes" not in st.session_state:
         st.session_state.recorded_bytes = None
 
-    # 자바스크립트 기반 녹음 인터페이스
+    # 자바스크립트 기반 녹음 인터페이스 (전송 직후 부모 창을 강제로 새로고침하는 로직 보완)
     recorder_html = """
     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
         <button id="startBtn" style="padding: 10px 20px; background-color: #10B981; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">🎙️ 녹음 시작</button>
@@ -243,7 +242,7 @@ with col_right:
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 const reader = new FileReader();
                 reader.readAsDataURL(audioBlob);
                 reader.onloadend = () => {
@@ -274,17 +273,21 @@ with col_right:
     # HTML 컴포넌트를 화면에 렌더링하고 결과 데이터 받기
     components_output = components.html(recorder_html, height=60)
 
-    # 녹음 데이터 처리 (안전장치 추가 버전)
+    # 녹음 데이터 처리 및 화면 강제 갱신(트리거)
     import base64
     if components_output and isinstance(components_output, str):
-        st.session_state.recorded_bytes = base64.b64decode(components_output)
+        # 새로운 데이터가 들어왔을 때만 세션에 저장하고 새로고침 실행
+        new_bytes = base64.b64decode(components_output)
+        if st.session_state.recorded_bytes != new_bytes:
+            st.session_state.recorded_bytes = new_bytes
+            st.rerun()  # [핵심 수정] 파이썬 서버에게 데이터가 왔으니 그래프를 그리라고 신호를 줌
 
     student_audio_bytes = st.session_state.recorded_bytes
     student_audio = None
     student_fs = 16000
     
     if student_audio_bytes:
-        st.audio(student_audio_bytes, format="audio/wav")
+        st.audio(student_audio_bytes, format="audio/webm")
         with open("temp_student.wav", "wb") as f:
             f.write(student_audio_bytes)
         try:
@@ -292,7 +295,14 @@ with col_right:
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
         except:
-            pass
+            # webm 파싱 실패 시 예외 처리
+            try:
+                audio_np = np.frombuffer(student_audio_bytes, dtype=np.int16) / 32768.0
+                if len(audio_np) > 44:
+                    student_audio = audio_np[44:].flatten()
+                    student_fs = 16000
+            except:
+                pass
     else:
         uploaded_s = st.file_uploader("학생 파일 업로드(선택)", type=["wav", "mp3"], key="student_upload")
         if uploaded_s:
