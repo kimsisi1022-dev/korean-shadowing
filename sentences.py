@@ -12,7 +12,7 @@ sentence_level1 = [
 "Betting time is open 베팅 시간 오픈 되었습니다 [betting sigan open de eot sseumnida ]",
 "The new round is open 새 라운드가 오픈되었습니다 [sae round-ga open de eot seumnida]",
 "The new round is open 새로운 라운드가 오픈되었습니다 [saeroun round-ga open de eot seumnida]",
-"Everyone, lt’s time to place your bets 여러분, 베팅 할 시간입니다 [yeoreobun, betting hal sigan imnida]",
+"Everyone lt’s time to place your bets 여러분, 베팅 할 시간입니다 [yeoreobun, betting hal sigan imnida]",
 "Please place your bets 베팅해 주세요 [betting hae juseyo]",
 "Betting time has closed 배팅 시간 마감했습니다 [betting sigan magam haetseumnida]",
 "Betting is closed, and the game is about to begin 베팅 마감하고 게임 시작합니다 [betting magamhago game sijakamnida]",
