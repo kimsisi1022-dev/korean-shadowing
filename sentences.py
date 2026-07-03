@@ -84,4 +84,5 @@ sentence_level1 = [
 "We’re changing the dealer 딜러 체인지합니다 [Dealer change hammida]",
 "Wish you luck with the pretty dealer (next dealer name) 예쁜 OO딜러와 행운을 빌어요 [yeppeun (oo) dealer wa Haenguneul bireoyo]",
 "Wish you luck with the beautiful dealer (next dealer name) 아름다 OO딜러와 행운을 빌어요 [areumdaun (oo) dealer wa Haenguneul bireoyo]",
+  
 ]
