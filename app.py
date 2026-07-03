@@ -209,17 +209,78 @@ with col_left:
 # --- 🎧 오른쪽: User Audio (학생) ---
 with col_right:
     st.subheader("🎧 User Audio")
-    
-    st.write("🎙️ 마이크를 누르면 녹음이 시작됩니다. (말을 멈추어도 자동으로 꺼지지 않으니 천천히 발음한 후 한 번 더 눌러 종료하세요!)")
-    
-    # [수정] 무음 감지 종료 시간을 30초로 대폭 늘려 자동 종료를 막고, 수동 조작처럼 동작하게 설정
-    student_audio_bytes = audio_recorder(
-        text="녹음 시작/중지 클릭",
-        recording_color="#EF4444",
-        neutral_color="#9CA3AF",
-        pause_threshold=30.0  # 30초 동안 침묵해야 꺼지므로 사실상 수동 제어 가능
-    )
-    
+    st.write("🔽 아래 버튼을 눌러 발음을 연습해 보세요.")
+
+    # HTML5/JavaScript 기반 커스텀 녹음기 컴포넌트
+    import streamlit.components.v1 as components
+
+    # 세션 상태 초기화
+    if "recorded_bytes" not in st.session_state:
+        st.session_state.recorded_bytes = None
+
+    # 자바스크립트 기반 녹음 인터페이스 (기존 마이크 아이콘 대체)
+    recorder_html = """
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <button id="startBtn" style="padding: 10px 20px; background-color: #10B981; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">🎙️ 녹음 시작</button>
+        <button id="stopBtn" style="padding: 10px 20px; background-color: #EF4444; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;" disabled>⏹️ 녹음 중지</button>
+        <span id="status" style="color: #9CA3AF; margin-top: 10px; font-size: 14px;">대기 중...</span>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+
+        startBtn.onclick = async () => {
+            audioChunks = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    // 스트림릿 서버로 데이터 전송
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: base64Audio
+                    }, '*');
+                };
+                status.innerText = "녹음 완료! 분석 중...";
+            };
+
+            mediaRecorder.start();
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            status.innerText = "🔴 녹음 중...";
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        };
+    </script>
+    """
+
+    # HTML 컴포넌트를 화면에 렌더링하고 결과 데이터 받기
+    components_output = components.html(recorder_html, height=60)
+
+    # 녹음 데이터 처리 (Base64 -> Bytes)
+    import base64
+    if components_output:
+        st.session_state.recorded_bytes = base64.b64decode(components_output)
+
+    student_audio_bytes = st.session_state.recorded_bytes
     student_audio = None
     student_fs = 16000
     
@@ -227,9 +288,13 @@ with col_right:
         st.audio(student_audio_bytes, format="audio/wav")
         with open("temp_student.wav", "wb") as f:
             f.write(student_audio_bytes)
-        data, student_fs = sf.read("temp_student.wav")
-        if len(data.shape) > 1: data = data[:, 0]
-        student_audio = data.flatten()
+        try:
+            data, student_fs = sf.read("temp_student.wav")
+            if len(data.shape) > 1: data = data[:, 0]
+            student_audio = data.flatten()
+        except:
+            # 예외 처리 안전장치
+            pass
     else:
         uploaded_s = st.file_uploader("학생 파일 업로드(선택)", type=["wav", "mp3"], key="student_upload")
         if uploaded_s:
@@ -237,10 +302,11 @@ with col_right:
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
 
+    # 학생 그래프 그리기
     fig_s, ax_s = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
     ax_s.set_facecolor('#111827')
     
-    if student_audio is not None:
+    if student_audio is not None and len(student_audio) > 0:
         s_times, s_pitches, s_ints = analyze_audio(student_audio, student_fs)
         ax_s.plot(s_times, s_pitches, color='#EF4444', linewidth=2)
         ax_s.set_ylabel("Pitch (Hz)", color='#EF4444')
