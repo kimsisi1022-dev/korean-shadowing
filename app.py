@@ -203,80 +203,89 @@ with col_left:
         
     st.pyplot(fig_t)
 
-
 # --- 🎧 Right Column: User Audio (Student) ---
 with col_right:
     st.subheader("🎧 User Audio")
+    st.write("🎙️ Click to record your voice, or upload an audio file below to practice.")
     
-    st.write("🎙️ Click the microphone icon to start recording. Speak clearly, and click it again to stop when you are done!")
-    
-    # Custom audio recorder configuration
+    # 1. 실시간 마이크 녹음기 컴포넌트
     student_audio_bytes = audio_recorder(
         text="Click to Record/Stop",
         recording_color="#EF4444",
         neutral_color="#9CA3AF",
-        pause_threshold=30.0  # Safe threshold to avoid unwanted automatic stops
+        pause_threshold=30.0
     )
     
     student_audio = None
     student_fs = 16000
+    student_audio_source = None  # 플레이어에 주입할 데이터 소스 저장용
     
+    # 2. 데이터 유입 경로 파악 (녹음 vs 파일 업로드)
     if student_audio_bytes:
-        st.audio(student_audio_bytes, format="audio/wav")
+        student_audio_source = student_audio_bytes
         with open("temp_student.wav", "wb") as f:
             f.write(student_audio_bytes)
-        data, student_fs = sf.read("temp_student.wav")
-        if len(data.shape) > 1: data = data[:, 0]
-        student_audio = data.flatten()
-    else:
-        uploaded_s = st.file_uploader("Upload Your Audio (Optional)", type=["wav", "mp3"], key="student_upload")
-        if uploaded_s:
-            data, student_fs = sf.read(uploaded_s)
+        try:
+            data, student_fs = sf.read("temp_student.wav")
             if len(data.shape) > 1: data = data[:, 0]
             student_audio = data.flatten()
-
-    # Render Student Plot
-    fig_s, ax_s = plt.subplots(figsize=(5, 3), facecolor='#1F2937')
-    ax_s.set_facecolor('#111827')
-    
-    if student_audio is not None:
-        s_times, s_pitches, s_ints = analyze_audio(student_audio, student_fs)
-        ax_s.plot(s_times, s_pitches, color='#EF4444', linewidth=2)
-        ax_s.set_ylabel("Pitch (Hz)", color='#EF4444')
-        ax_s.set_ylim(80, 350)
-        ax_s.tick_params(colors='#9CA3AF')
-        
-        ax_s_int = ax_s.twinx()
-        ax_s_int.plot(s_times, s_ints, color='orange', linestyle='--', alpha=0.4)
-        ax_s_int.set_ylabel("Intensity (dB)", color='orange')
-        ax_s_int.set_ylim(0, 90)
-        ax_s_int.tick_params(colors='#9CA3AF')
+        except:
+            pass
     else:
-        ax_s.text(0.5, 0.5, "Awaiting Recording...", color='#9CA3AF', ha='center', va='center')
-        ax_s.set_axis_off()
-        
-    st.pyplot(fig_s)
+        # 학생들이 직접 파일을 업로드한 경우
+        uploaded_s = st.file_uploader("Upload Your Audio (Optional)", type=["wav", "mp3"], key="student_upload")
+        if uploaded_s:
+            student_audio_source = uploaded_s
+            try:
+                # 업로드된 임시 바이너리 객체 읽기
+                uploaded_s.seek(0)
+                data, student_fs = sf.read(uploaded_s)
+                if len(data.shape) > 1: data = data[:, 0]
+                student_audio = data.flatten()
+            except:
+                st.error("Failed to decode uploaded file. Please make sure it's a valid WAV or MP3 file.")
 
-# --- 📊 Bottom Column: Integrated Comparison Graph ---
+    # 3. 학생 인터랙티브 오디오 재생 및 그래프 제어
+    if student_audio is not None and len(student_audio) > 0:
+        s_times, s_pitches, s_ints = analyze_audio(student_audio, student_fs)
+        fig_s = create_interactive_plot(s_times, s_pitches, s_ints, '#EF4444', "Your Intonation (Click to play from here)")
+        
+        # 그래프 클릭 이벤트 가로채기
+        selected_point_s = plotly_events(fig_s, click_event=True, hover_event=False, override_height=300, key=f"s_plot_{idx}")
+        
+        if selected_point_s:
+            # 클릭한 타임라인 초(second)를 기준으로 음성 슬라이싱 후 재생
+            click_time_s = selected_point_s[0]['x']
+            start_sample_s = int(click_time_s * student_fs)
+            st.success(f"🎵 Playing your voice from {click_time_s:.2f} seconds")
+            st.audio(student_audio[start_sample_s:], sample_rate=student_fs)
+        else:
+            # [중요 수정] 마우스 클릭이 없을 때는 업로드된 전체 오디오 플레이어를 화면에 정상 노출!
+            if student_audio_bytes:
+                st.audio(student_audio_bytes, format="audio/wav")
+            elif uploaded_s:
+                st.audio(student_audio_source)
+    else:
+        st.info("Awaiting Student Recording or File Upload...")
+
+
+# --- 📊 Bottom Column: Integrated Comparison Graph (Static) ---
 st.markdown("---")
 st.subheader("📊 Integrated Comparison (Intonation Overlay)")
 
-fig_b, plt_ax_b = plt.subplots(figsize=(11, 2.5), facecolor='#1F2937')
-plt_ax_b.set_facecolor('#111827')
-plt_ax_b.tick_params(colors='#9CA3AF')
+fig_b = px.Figure()
 
 if teacher_audio is not None and len(teacher_audio) > 0:
-    t_times, t_pitches, _ = analyze_audio(teacher_audio, teacher_fs)
-    plt_ax_b.plot(t_times, t_pitches, color='#0EA5E9', linewidth=2.5, label="Reference (Teacher)", alpha=0.6)
-
+    fig_b.add_trace(px.Scatter(x=t_times, y=t_pitches, mode='lines', line=dict(color='#0EA5E9', width=2.5), name="Teacher"))
 if student_audio is not None and len(student_audio) > 0:
-    s_times, s_pitches, _ = analyze_audio(student_audio, student_fs)
-    plt_ax_b.plot(s_times, s_pitches, color='#EF4444', linewidth=2.5, label="User (Student)", alpha=0.9)
+    fig_b.add_trace(px.Scatter(x=s_times, y=s_pitches, mode='lines', line=dict(color='#EF4444', width=2.5), name="Student"))
 
-if (teacher_audio is not None and len(teacher_audio) > 0) or (student_audio is not None and len(student_audio) > 0):
-    plt_ax_b.set_ylim(80, 350)
-    plt_ax_b.legend(loc="upper right", facecolor='#1F2937', edgecolor='#9CA3AF', labelcolor='#F3F4F6')
-else:
-    plt_ax_b.text(0.5, 0.5, "Awaiting Input Data to Compare", color='#9CA3AF', ha='center', va='center')
+fig_b.update_layout(
+    paper_bgcolor='#1F2937', plot_bgcolor='#111827',
+    margin=dict(l=40, r=40, t=10, b=40), height=220,
+    xaxis=dict(tickfont=dict(color='#9CA3AF'), gridcolor='#1F2937'),
+    yaxis=dict(range=[80, 350], tickfont=dict(color='#9CA3AF'), gridcolor='#1F2937'),
+    legend=dict(font=dict(color='#F3F4F6'), bgcolor='rgba(31, 41, 55, 0.7)')
+)
 
-st.pyplot(fig_b)
+st.plotly_chart(fig_b, use_container_width=True)
