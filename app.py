@@ -1,11 +1,12 @@
 import streamlit as st
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as px
+from streamlit_plotly_events import plotly_events
 import os
 import soundfile as sf
 from audio_recorder_streamlit import audio_recorder
 
-# --- Page Configuration (Dark theme & Title) ---
+# --- Page Configuration ---
 st.set_page_config(
     page_title="Korean Pronunciation Shadowing",
     page_icon="🗣️",
@@ -29,6 +30,13 @@ st.markdown("""
         font-size: 22px;
         font-weight: bold;
     }
+    .guide-box {
+        background-color: #1F2937;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        border-inline-start: 4px solid #10B981;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -42,7 +50,7 @@ except ImportError:
         "한국어 발음 연습을 시작해 봅시다."
     ]
 
-# --- Audio Analysis Function (Pitch & Intensity) ---
+# --- Audio Analysis Function ---
 def analyze_audio(audio_data, fs):
     frame_size = int(fs * 0.03)  
     hop_size = int(fs * 0.01)    
@@ -69,38 +77,106 @@ def analyze_audio(audio_data, fs):
         times.append(idx / fs)
     return np.array(times), np.array(pitches), np.array(intensities)
 
-# --- Session State Management (Current Sentence Index) ---
+# --- Interactive Plot Generator ---
+def create_interactive_plot(times, pitches, intensities, color_line, title):
+    fig = px.Figure()
+    fig.add_trace(px.Scatter(
+        x=times, y=pitches, mode='lines',
+        line=dict(color=color_line, width=3), name="Pitch (Hz)",
+        hovertemplate="Time: %{x:.2f}s<br>Pitch: %{y:.1f}Hz<extra></extra>"
+    ))
+    fig.add_trace(px.Scatter(
+        x=times, y=intensities, mode='lines',
+        line=dict(color='rgba(156, 163, 175, 0.3)', width=1.5, dash='dash'),
+        name="Intensity (dB)", yaxis="y2",
+        hovertemplate="Time: %{x:.2f}s<br>Intensity: %{y:.1f}dB<extra></extra>"
+    ))
+    fig.update_layout(
+        title=dict(text=title, font=dict(color='#F3F4F6', size=14)),
+        paper_bgcolor='#1F2937', plot_bgcolor='#111827',
+        margin=dict(l=40, r=40, t=40, b=40), height=300, showlegend=False, clickmode='event',
+        xaxis=dict(title=dict(text="Time (seconds)", font=dict(color='#9CA3AF')), tickfont=dict(color='#9CA3AF'), gridcolor='#1F2937'),
+        yaxis=dict(title=dict(text="Pitch (Hz)", font=dict(color=color_line)), tickfont=dict(color='#9CA3AF'), range=[80, 350], gridcolor='#1F2937'),
+        yaxis2=dict(title=dict(text="Intensity (dB)", font=dict(color='#9CA3AF')), tickfont=dict(color='#9CA3AF'), range=[0, 90], overlaying="y", side="right", showgrid=False)
+    )
+    return fig
+
+# --- State Management ---
 if 'current_idx' not in st.session_state:
     st.session_state.current_idx = 0
 
-# --- 📁 Sidebar: Script List View ---
+# --- 📁 Sidebar: Script List & 💡 NEW: Pronunciation Guide ---
 with st.sidebar:
-    st.title("📋 Script List")
-    st.caption("Select a sentence from the list below to jump directly to it.")
+    st.title("📋 Navigation & Guides")
     
-    # 1. Dropdown Selector
-    selected_idx = st.selectbox(
-        "🎯 Select Sentence",
-        options=range(len(sentence_level1)),
-        index=st.session_state.current_idx,
-        format_func=lambda x: f"Q{x+1}. {sentence_level1[x][:20]}..." if len(sentence_level1[x]) > 20 else f"Q{x+1}. {sentence_level1[x]}"
-    )
+    # 탭 메뉴로 깔끔하게 분리 (1 탭: 대사 선택, 2 탭: 조음 가이드)
+    tab_nav, tab_guide = st.tabs(["🎯 Script List", "💡 Mouth & Tongue Guide"])
     
-    # Sync main screen if a different sentence is selected from sidebar
-    if selected_idx != st.session_state.current_idx:
-        st.session_state.current_idx = selected_idx
-        st.rerun()
+    with tab_nav:
+        st.caption("Select a sentence from the list below.")
+        selected_idx = st.selectbox(
+            "Move to Sentence",
+            options=range(len(sentence_level1)),
+            index=st.session_state.current_idx,
+            format_func=lambda x: f"Q{x+1}. {sentence_level1[x][:15]}..." if len(sentence_level1[x]) > 15 else f"Q{x+1}. {sentence_level1[x]}"
+        )
+        if selected_idx != st.session_state.current_idx:
+            st.session_state.current_idx = selected_idx
+            st.rerun()
+            
+        st.markdown("---")
+        st.markdown("**Overview**")
+        for i, sentence in enumerate(sentence_level1):
+            if i == st.session_state.current_idx:
+                st.markdown(f"**⭐ Q{i+1}. {sentence}**")
+            else:
+                st.markdown(f"Q{i+1}. {sentence}")
+                
+    with tab_guide:
+        st.caption("Learn the correct mouth shapes and tongue positions for Korean.")
         
-    st.markdown("---")
-    
-    # 2. Overview Text List
-    st.markdown("**All Sentences Overview**")
-    for i, sentence in enumerate(sentence_level1):
-        # Highlight current sentence with a star (⭐)
-        if i == st.session_state.current_idx:
-            st.markdown(f"**⭐ Q{i+1}. {sentence}**")
+        guide_type = st.radio("Choose Category", ["Vowels (모음)", "Consonants (자음)"])
+        
+        if guide_type == "Vowels (모음)":
+            st.markdown("""
+            <div class="guide-box">
+                <strong>👄 ㅏ [a] vs ㅓ [ㅓ]</strong><br>
+                • <b>ㅏ:</b> Open your mouth wide vertically.<br>
+                • <b>ㅓ:</b> Keep your tongue low, relax your lips, open slightly less than 'ㅏ'.
+            </div>
+            <div class="guide-box">
+                <strong>👄 ㅗ [o] vs ㅜ [u]</strong><br>
+                • <b>ㅗ:</b> Round your lips forward tightly (O-shape).<br>
+                • <b>ㅜ:</b> Push your lips further out, making a smaller circle.
+            </div>
+            <div class="guide-box">
+                <strong>👄 ㅡ [ɯ] vs ㅣ [i]</strong><br>
+                • <b>ㅡ:</b> Pull your lips wide to the sides, flat mouth.<br>
+                • <b>ㅣ:</b> Smile shape, tongue high up near the roof.
+            </div>
+            """, unsafe_allow_html=True)
+            
         else:
-            st.markdown(f"Q{i+1}. {sentence}")
+            st.markdown("""
+            <div class="guide-box">
+                <strong>👅 ㄱ, ㅋ, ㄲ (Velar)</strong><br>
+                • The back of your tongue blocks and releases air from the soft palate.
+            </div>
+            <div class="guide-box">
+                <strong>👅 ㄴ, ㄷ, ㅌ, ㄹ (Alveolar)</strong><br>
+                • The tip of your tongue must touch the ridge behind your upper front teeth.
+            </div>
+            <div class="guide-box">
+                <strong>👅 ㅁ, ㅂ, ㅍ, ㅃ (Bilabial)</strong><br>
+                • Completely close and pop your upper and lower lips together.
+            </div>
+            <div class="guide-box">
+                <strong>💡 Tip for Lax vs Aspirated vs Tense</strong><br>
+                • <b>ㄱ / ㅂ:</b> Normal breath.<br>
+                • <b>ㅋ / ㅍ:</b> Strong burst of air (Aspirated).<br>
+                • <b>ㄲ / ㅃ:</b> Tense up throat muscles, NO air escapes (Tense).
+            </div>
+            """, unsafe_allow_html=True)
 
 # --- Main Header ---
 st.title("Korean Pronunciation Shadowing Analyzer 🗣️")
