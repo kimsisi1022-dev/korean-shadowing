@@ -58,7 +58,7 @@ sentence_level1 = [
 "I'll change the shoe 슈 체인지 할게요 [shoe change halgeyo]",
 "I Changed the shoe 슈 체인지 했습니다 [shoe change haedsseumnida]",
 "It is the new shoe 새로운 슈 입니다 [saeroun shoe imnida]",
-"It is the new shoe 새로운 슈 입니다 [sae shoe imnida]",
+"It is the new shoe 새 슈 입니다 [sae shoe imnida]",
 "I’m going to burn some cards 카드 버닝 할게요 [card burning halgeyo]",
 "I’m going to burn some cards and starting a game 카드 버닝하고 게임 시작합니다 [card burning hago game sijakamnida]",
 "I’m burning 1 card 1장 버닝합니다 [han jang burning hamnida]", 
